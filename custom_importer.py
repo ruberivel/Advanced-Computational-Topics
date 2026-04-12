@@ -2,26 +2,24 @@ import h5py
 import numpy as np
 import pandas as pd
 import os
+import pickle
 
 
-
-class Importer:
-
+class custom_input_output:
 
     def read_cern_csv_file(self, filename):
         return pd.read_csv(filename, delimiter=' ')
 
-    def assign_label(self, dataframe, label): # labels each dataline with the provided label
+    def assign_label(self, dataframe, label):  # labels each dataline with the provided label
         dataframe["label"] = label
         return dataframe
 
     def import_data_for_use(self, filename1):
         b = self.read_cern_csv_file(filename1)
-        self.assign_label(b, filename1.name) #label with filename where data originated
+        self.assign_label(b, filename1.name)  # label with filename where data originated
         return b
 
-
-    def import_simulation_data_from_directory(self,directory_location):
+    def import_simulation_data_from_directory(self, directory_location):
         # scanning through all files in provided dir
         datalist = []
         for file_or_dir in os.scandir(directory_location):
@@ -31,34 +29,39 @@ class Importer:
                 else:
                     datalist.append(self.import_data_for_use(
                         file_or_dir))  # if it is not measurement data, import the data and add it to the list.
-        dataframe = pd.concat(datalist,ignore_index=True) #generate dataframe combining all data.
+        dataframe = pd.concat(datalist, ignore_index=True)  # generate dataframe combining all data.
         return dataframe
 
-    def select_test_data_from_dataframe(self, dataframe, seed = 2869393660352049057, test_data_size_fraction=0.1):
+    def select_test_data_from_dataframe(self, dataframe, seed=2869393660352049057, test_data_size_fraction=0.1, return_as_separate_dataframe=False):
         """
-        Selects test_data_size_fraction of the entries in dataframe and marks them as either test data or not test data.
+        Selects test_data_size_fraction of the entries in dataframe and splits them in a training set and a testing set..
 
         :param dataframe:
         :param seed: optional seed for randomization
         :param test_data_size_fraction: fraction of total data to be used as test data
-        :return: dataframe with additional column 'is_test_data' which contains boolean values.
+        :param return_as_separate_dataframe:
+        :return: dataframe with additional column 'is_test_data' which contains boolean values. or if return_as_separate_dataframe is true, return a training set and a testing set dataframe dataframe.
         """
-        number_of_entries_in_test_set = int(np.floor(len(dataframe.index)*test_data_size_fraction))
+        number_of_entries_in_test_set = int(np.floor(len(dataframe.index) * test_data_size_fraction))
         rng = np.random.default_rng(seed)
         shuffled_indices = rng.permutation(dataframe.index)
-        dataframe.loc[:, "is_test_data"] = False
-        dataframe.loc[shuffled_indices[0:number_of_entries_in_test_set], "is_test_data"] = True
-        return dataframe
 
-    def build_X_matrix_and_y_vector(self,df):
+
+        if return_as_separate_dataframe:
+                testingset_dataframe = dataframe.loc[shuffled_indices[0:number_of_entries_in_test_set]]
+                trainingset_dataframe = dataframe.loc[shuffled_indices[number_of_entries_in_test_set:]]
+                return trainingset_dataframe, testingset_dataframe
+        else:
+            dataframe.loc[:, "is_test_data"] = False
+            dataframe.loc[shuffled_indices[0:number_of_entries_in_test_set], "is_test_data"] = True
+            return dataframe
+
+    def build_X_matrix_and_y_vector(self, df):
         """
         takes the provided dataframe, and labels the Higgs boson production with a 1 in the y column and non Higgs boson production with a -1 in the y column.
         then returns all inputs as a matrix X, and all y outputs as a vector Y.
         :return: X, Y
         """
-
-
-
 
         # %%
         # identify y for classification
@@ -79,3 +82,20 @@ class Importer:
         normalization[normalization == 0] = 1  # remove any division by 0 issues
         X = X / normalization
         return X, Y
+
+    def pickle_file_to_disk(file_location, object_to_pickle):
+        """
+        pickles the file to provided file_location
+        :param file_location:
+        :param object_to_pickle:
+        :return:
+        """
+
+        with open(file_location, "wb") as writer:
+            pickle.dump(object_to_pickle, writer, protocol=5)
+
+    def unpickle_file_to_disk(file_location):
+        with open(file_location, "rb") as reader:
+            return pickle.load(reader)
+
+

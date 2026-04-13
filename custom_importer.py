@@ -56,7 +56,8 @@ class custom_input_output:
             dataframe.loc[shuffled_indices[0:number_of_entries_in_test_set], "is_test_data"] = True
             return dataframe
 
-    def build_X_matrix_and_y_vector(self, df):
+    def build_X_matrix_and_y_vector(self, df, normalize_full_dict=False):
+
         """
         takes the provided dataframe, and labels the Higgs boson production with a 1 in the y column and non Higgs boson production with a -1 in the y column.
         then returns all inputs as a matrix X, and all y outputs as a vector Y.
@@ -75,15 +76,36 @@ class custom_input_output:
 
         # %%
         # identify X matrix
-        X = df.drop(columns=["y", "label", "is_test_data"])
+        columns = list(df.columns)
+        to_drop_from_columns_to_drop = []
+        columns_to_drop = ["y","label","is_test_data","weight"]
+        for column in columns_to_drop:
+            if column in columns:
+                columns.remove(column)
+            else:
+                to_drop_from_columns_to_drop.append(column)
+        for dropping in to_drop_from_columns_to_drop:
+            columns_to_drop.remove(dropping)
+
+        X = df.drop(columns=columns_to_drop)
+
 
         # %%normalize training data
         normalization = np.max(abs(X), axis=0)  # get max magnitude values of each column
         normalization[normalization == 0] = 1  # remove any division by 0 issues
         X = X / normalization
-        return X, Y
 
-    def pickle_file_to_disk(file_location, object_to_pickle):
+        if normalize_full_dict:
+            df[columns] = X
+            return df
+
+        else:
+
+
+
+            return X, Y
+
+    def pickle_file_to_disk(self,file_location, object_to_pickle):
         """
         pickles the file to provided file_location
         :param file_location:
@@ -94,8 +116,44 @@ class custom_input_output:
         with open(file_location, "wb") as writer:
             pickle.dump(object_to_pickle, writer, protocol=5)
 
-    def unpickle_file_to_disk(file_location):
+    def unpickle_file_to_disk(self,file_location):
         with open(file_location, "rb") as reader:
             return pickle.load(reader)
 
+    def append_to_dataframe_on_disk(self,dataframe, filename, file_location, overwrite=False):
+        """
+        Appends dataframe to store in filename, if it exists, otherwise creates the dataframe at file_location.
+        :param dataframe:
+        :param filename:
+        :param file_location:
+        :return:
+        """
+        if overwrite:
+            store = pd.HDFStore(f"{file_location}/{filename}", mode='w')
+        else:
+            store = pd.HDFStore(f"{file_location}/{filename}", mode='a')
+        store["dataframe"] = dataframe
+        store.close()
 
+    def load_dataframe_from_disk(self,filename, file_location):
+        """
+        Reads the dataframe stored under the name "dataframe" from the HDF5 store with name filename
+        :param filename:
+        :param file_location:
+        :return:
+        """
+        store = pd.HDFStore(f"{file_location}/{filename}", mode='r')
+        df = store["dataframe"]
+        store.close()
+        return df
+
+
+
+
+#%%
+
+    def import_alternative_data_version(self,filename):
+        # filename = "train_chunk_fixed_filtered.csv"
+        dataframe = pd.read_csv(filename)
+        dataframe.rename(columns={"source_file":"label"},inplace=True)
+        return dataframe

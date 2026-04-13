@@ -157,3 +157,11 @@ class custom_input_output:
         dataframe = pd.read_csv(filename)
         dataframe.rename(columns={"source_file":"label"},inplace=True)
         return dataframe
+
+
+
+# example:
+# y_true = Y["y"]
+# y_score = estimates[:,1]
+# compute_Auc_value(y_true, y_score)
+# compute_and_show_ROC_curve(y_true, y_score)

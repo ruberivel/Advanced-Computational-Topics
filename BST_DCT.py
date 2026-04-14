@@ -7,64 +7,37 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import auc, classification_report, confusion_matrix, roc_curve
 from xgboost import XGBClassifier
-
+import pandas as pd
 
 def load_hep_csv(path: str | Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
-    """
-    Load a CSV where the first column contains a space-separated event record and
-    the second column is the sample/source label.
+    df = pd.read_csv(path)
 
-    Returns
-    -------
-    X : pd.DataFrame
-        Numeric feature matrix with 'weight' removed if present.
-    y : pd.Series
-        Binary target: 1 for ggH125, 0 otherwise.
-    weights : pd.Series
-        Event weights if present, otherwise all ones.
-    """
-    df_raw = pd.read_csv(path)
-    if df_raw.shape[1] < 2:
-        raise ValueError(
-            f"Expected at least 2 columns in {path}, got {df_raw.shape[1]}."
-        )
+    if "source_file" not in df.columns:
+        raise ValueError("Expected a 'source_file' column.")
+    if "weight" not in df.columns:
+        raise ValueError("Expected a 'weight' column.")
 
-    feature_col = df_raw.columns[0]
-    label_col = "source_file" if "source_file" in df_raw.columns else df_raw.columns[-1]
+    source = df["source_file"].astype(str)
 
-    feature_names = feature_col.split()
-    X_df = df_raw[feature_col].astype(str).str.split(expand=True)
+    # Signal definition:
+    # - anything containing 'ggh125'
+    # - VBFH125_WW2lep.csv
+    is_ggh = source.str.contains("ggh125", case=False, na=False)
+    is_vbf = source.str.contains("VBFH125_WW2lep", case=False, na=False, regex=True)
 
-    if X_df.shape[1] != len(feature_names):
-        raise ValueError(
-            f"Parsed {X_df.shape[1]} feature columns from rows, but header contains {len(feature_names)} names."
-        )
+    y = (is_ggh | is_vbf).astype(int)
 
-    X_df.columns = feature_names
-    X_df = X_df.apply(pd.to_numeric, errors="coerce")
+    weights = pd.to_numeric(df["weight"], errors="coerce").clip(lower=1e-6)
 
-    if X_df.isna().any().any():
-        bad_cols = X_df.columns[X_df.isna().any()].tolist()
-        raise ValueError(
-            "Non-numeric or missing values were found after parsing. "
-            f"Problem columns include: {bad_cols[:10]}"
-        )
+    X = df.drop(columns=["source_file", "weight"]).apply(pd.to_numeric, errors="coerce")
 
-    labels = df_raw[label_col].astype(str)
-    y = labels.str.contains("ggh125", case=False, na=False).astype(int)
+    if X.isna().any().any():
+        bad_cols = X.columns[X.isna().any()].tolist()
+        raise ValueError(f"Non-numeric or missing values found in columns: {bad_cols[:10]}")
 
-    if "weight" in X_df.columns:
-        weights = X_df["weight"].copy()
-        X = X_df.drop(columns=["weight"])
-    else:
-        weights = pd.Series(np.ones(len(X_df)), index=X_df.index, name="weight")
-        X = X_df
+    if weights.isna().any():
+        raise ValueError("NaN values found in weight column.")
 
-
-    weights = X_df["weight"].copy()
-
-    # fix invalid weights
-    weights = weights.clip(lower=1e-6)
     return X, y, weights
 
 
@@ -83,8 +56,8 @@ def make_output_dir(output_dir: str | Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train an XGBoost Higgs-vs-background classifier.")
-    parser.add_argument("--train", default="C:\\Users\\revel\\Downloads\\New folder (2)\\atlas_stratified_split\\train_chunk.csv", help="Path to training CSV")
-    parser.add_argument("--test", default="C:\\Users\\revel\\Downloads\\New folder (2)\\atlas_stratified_split\\test_chunk.csv", help="Path to test CSV")
+    parser.add_argument("--train", default="C:\\Users\\revel\\Downloads\\New folder (2)\\train_chunk_fixed_filtered.csv", help="Path to training CSV")
+    parser.add_argument("--test", default="C:\\Users\\revel\\Downloads\\New folder (2)\\test_chunk_fixed_filtered.csv", help="Path to test CSV")
     parser.add_argument("--output-dir", default="xgb_outputs", help="Directory for outputs")
     parser.add_argument("--n-estimators", type=int, default=500)
     parser.add_argument("--max-depth", type=int, default=4)
@@ -176,6 +149,20 @@ def main() -> None:
     importance = pd.Series(model.feature_importances_, index=X_train.columns)
     importance.sort_values(ascending=False).to_csv(outdir / "feature_importance.csv", header=["importance"])
 
+
+
+
+    roc_df = pd.DataFrame({
+    "fpr": fpr,
+    "tpr": tpr,
+    "thresholds": thresholds
+    })
+
+    roc_df.to_csv(outdir / "roc_data_bsc.csv", index=False)
+
+
+
+
     # ROC curve plot
     plt.figure(figsize=(7, 5))
     plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.4f}")
@@ -239,3 +226,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
